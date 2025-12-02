@@ -1,23 +1,50 @@
-name: The name of your action here
-description: Provide a description here
+name: TFE Workspace Manager
+description:
+  Create and manage multiple Terraform Enterprise/Cloud workspaces with
+  dependencies
 author: Your name or organization here
 
 # Add your action's branding here. This will appear on the GitHub Marketplace.
 branding:
-  icon: heart
-  color: red
+  icon: cloud
+  color: purple
 
 # Define your inputs here.
 inputs:
-  milliseconds:
-    description: Your input description here
+  tfe-token:
+    description: Terraform Enterprise/Cloud API token
     required: true
-    default: '1000'
+  organization-name:
+    description: TFE/TFC organization name
+    required: true
+  config:
+    description: |
+      YAML configuration for workspaces including action, VCS settings, variables, and dependencies.
+      Example:
+        action: create
+        workspaces:
+          network:
+            vcs:
+              repository: org/repo
+              oauth-token-id: ot-xxx
+            variables:
+              environment: prod
+          app:
+            dependsOn: [network]
+    required: true
+  tfe-hostname:
+    description: TFE hostname (use app.terraform.io for Terraform Cloud)
+    required: false
+    default: 'app.terraform.io'
 
 # Define your outputs here.
 outputs:
-  time:
-    description: Your output description here
+  workspace-id:
+    description:
+      The ID of the first successfully created workspace (e.g., ws-xxx)
+  workspace-url:
+    description:
+      The URL to the first successfully created workspace in TFE/TFC UI
 
 runs:
   using: node24
