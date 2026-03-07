@@ -160,17 +160,20 @@ export class TFEClient {
       `Creating ${Object.keys(variables).length} variables for workspace ${workspaceId}`
     )
 
-    for (const [key, value] of Object.entries(variables)) {
+    for (const [key, rawValue] of Object.entries(variables)) {
+      const isConfig =
+        typeof rawValue === 'object' && rawValue !== null && 'value' in rawValue
+
+      const value = isConfig ? String(rawValue.value) : String(rawValue)
+      const category =
+        isConfig && rawValue.category ? rawValue.category : 'terraform'
+      const sensitive = isConfig ? Boolean(rawValue.sensitive) : false
+      const hcl = isConfig ? Boolean(rawValue.hcl) : false
+
       const payload: TFEVariableRequest = {
         data: {
           type: 'vars',
-          attributes: {
-            key,
-            value: String(value),
-            category: 'terraform',
-            hcl: false,
-            sensitive: false
-          }
+          attributes: { key, value, category, hcl, sensitive }
         }
       }
 

@@ -17,10 +17,20 @@ export interface VCSConfig {
 }
 
 /**
- * Variables for a workspace (key-value pairs)
+ * Object-form variable configuration with optional metadata
+ */
+export interface VariableConfig {
+  value: string | number | boolean
+  sensitive?: boolean
+  category?: VariableCategory
+  hcl?: boolean
+}
+
+/**
+ * Variables for a workspace (key-value pairs or object-form)
  */
 export interface WorkspaceVariables {
-  [key: string]: string | number | boolean
+  [key: string]: string | number | boolean | VariableConfig
 }
 
 /**

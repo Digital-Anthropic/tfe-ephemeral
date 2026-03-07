@@ -31003,17 +31003,16 @@ class TFEClient {
         const url = `https://${this.hostname}/api/v2/workspaces/${workspaceId}/vars`;
         const results = [];
         coreExports.debug(`Creating ${Object.keys(variables).length} variables for workspace ${workspaceId}`);
-        for (const [key, value] of Object.entries(variables)) {
+        for (const [key, rawValue] of Object.entries(variables)) {
+            const isConfig = typeof rawValue === 'object' && rawValue !== null && 'value' in rawValue;
+            const value = isConfig ? String(rawValue.value) : String(rawValue);
+            const category = isConfig && rawValue.category ? rawValue.category : 'terraform';
+            const sensitive = isConfig ? Boolean(rawValue.sensitive) : false;
+            const hcl = isConfig ? Boolean(rawValue.hcl) : false;
             const payload = {
                 data: {
                     type: 'vars',
-                    attributes: {
-                        key,
-                        value: String(value),
-                        category: 'terraform',
-                        hcl: false,
-                        sensitive: false
-                    }
+                    attributes: { key, value, category, hcl, sensitive }
                 }
             };
             try {

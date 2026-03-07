@@ -130,6 +130,89 @@ describe('TFEClient', () => {
         client.createVariables('ws-123', { key1: 'value1' })
       ).rejects.toThrow('Failed to create variable')
     })
+
+    it('passes correct attributes for object-form variables', async () => {
+      mockPostJson.mockResolvedValue({
+        statusCode: 201,
+        result: {
+          data: {
+            id: 'var-123',
+            type: 'vars',
+            attributes: {
+              key: 'SECRET_KEY',
+              value: 'hidden',
+              category: 'env',
+              hcl: true,
+              sensitive: true
+            }
+          }
+        }
+      })
+
+      await client.createVariables('ws-123', {
+        SECRET_KEY: {
+          value: 'hidden',
+          sensitive: true,
+          category: 'env',
+          hcl: true
+        }
+      })
+
+      expect(mockPostJson).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          data: {
+            type: 'vars',
+            attributes: {
+              key: 'SECRET_KEY',
+              value: 'hidden',
+              category: 'env',
+              hcl: true,
+              sensitive: true
+            }
+          }
+        })
+      )
+    })
+
+    it('uses defaults for partial object-form variables', async () => {
+      mockPostJson.mockResolvedValue({
+        statusCode: 201,
+        result: {
+          data: {
+            id: 'var-456',
+            type: 'vars',
+            attributes: {
+              key: 'MY_VAR',
+              value: 'x',
+              category: 'terraform',
+              hcl: false,
+              sensitive: false
+            }
+          }
+        }
+      })
+
+      await client.createVariables('ws-123', {
+        MY_VAR: { value: 'x' }
+      })
+
+      expect(mockPostJson).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          data: {
+            type: 'vars',
+            attributes: {
+              key: 'MY_VAR',
+              value: 'x',
+              category: 'terraform',
+              hcl: false,
+              sensitive: false
+            }
+          }
+        })
+      )
+    })
   })
 
   describe('deleteWorkspace', () => {
