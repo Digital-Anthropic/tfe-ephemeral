@@ -31202,6 +31202,7 @@ class TFEClient {
                 // Terminal states
                 const terminalStates = [
                     'applied',
+                    'planned_and_finished',
                     'errored',
                     'canceled',
                     'force_canceled',
@@ -31210,6 +31211,9 @@ class TFEClient {
                 if (terminalStates.includes(status)) {
                     if (status === 'applied') {
                         coreExports.info(`✅ Run completed successfully: ${runId}`);
+                    }
+                    else if (status === 'planned_and_finished') {
+                        coreExports.info(`✅ Run completed with no changes to apply: ${runId}`);
                     }
                     else if (status === 'errored') {
                         throw new Error(`Run failed with status: ${status}`);

@@ -174,6 +174,7 @@ export type RunStatus =
   | 'apply_queued'
   | 'applying'
   | 'applied'
+  | 'planned_and_finished'
   | 'discarded'
   | 'errored'
   | 'canceled'
