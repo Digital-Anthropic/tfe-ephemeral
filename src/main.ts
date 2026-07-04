@@ -14,6 +14,9 @@ export async function run(): Promise<void> {
   try {
     // Get required inputs
     const token = core.getInput('tfe-token', { required: true })
+    // Mask the token in logs even when it does not come directly from
+    // ${{ secrets.* }} (e.g. fetched from a vault in a previous step).
+    core.setSecret(token)
     const organization = core.getInput('organization-name', { required: true })
     const configYaml = core.getInput('config', { required: true })
     const hostname = core.getInput('tfe-hostname') || 'app.terraform.io'
@@ -96,9 +99,12 @@ export async function run(): Promise<void> {
       core.info('🎉 All operations completed successfully!')
     }
   } catch (error) {
-    // Fail the workflow run if an error occurs
+    // Fail the workflow run if an error occurs. Non-Error throws (strings,
+    // objects) must also fail the run instead of letting it exit successfully.
     if (error instanceof Error) {
       core.setFailed(`Action failed: ${error.message}`)
+    } else {
+      core.setFailed(`Action failed: ${String(error)}`)
     }
   }
 }

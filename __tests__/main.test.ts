@@ -8,6 +8,7 @@ import { jest } from '@jest/globals'
 // Mock @actions/core
 const mockGetInput = jest.fn()
 const mockSetOutput = jest.fn()
+const mockSetSecret = jest.fn()
 const mockSetFailed = jest.fn()
 const mockInfo = jest.fn()
 const mockDebug = jest.fn()
@@ -17,6 +18,7 @@ const mockWarning = jest.fn()
 jest.unstable_mockModule('@actions/core', () => ({
   getInput: mockGetInput,
   setOutput: mockSetOutput,
+  setSecret: mockSetSecret,
   setFailed: mockSetFailed,
   info: mockInfo,
   debug: mockDebug,
@@ -104,6 +106,27 @@ workspaces:
         expect.stringContaining('Creating 2 workspace(s) in parallel')
       )
       expect(mockSetFailed).not.toHaveBeenCalled()
+    })
+
+    it('registers the TFE token as a masked secret', async () => {
+      mockPostJson.mockResolvedValue({
+        statusCode: 201,
+        result: {
+          data: {
+            id: 'ws-abc123',
+            type: 'workspaces',
+            attributes: {
+              name: 'workspace1',
+              'html-url':
+                'https://app.terraform.io/app/test-org/workspaces/workspace1'
+            }
+          }
+        }
+      })
+
+      await run()
+
+      expect(mockSetSecret).toHaveBeenCalledWith('test-token-12345')
     })
 
     it('creates workspace with VCS configuration', async () => {
@@ -842,6 +865,19 @@ workspaces:
 
       expect(mockError).toHaveBeenCalledWith(
         expect.stringContaining('Network request failed')
+      )
+    })
+
+    it('fails the action on non-Error throws', async () => {
+      mockGetInput.mockImplementation(() => {
+        // Intentionally a non-Error throw to exercise the top-level catch
+        throw 'string failure'
+      })
+
+      await run()
+
+      expect(mockSetFailed).toHaveBeenCalledWith(
+        'Action failed: string failure'
       )
     })
   })
