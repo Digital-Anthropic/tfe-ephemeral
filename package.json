@@ -1,20 +1,24 @@
 {
-  "name": "typescript-action",
-  "description": "GitHub Actions TypeScript template",
-  "version": "0.0.0",
+  "name": "tfe-ephemeral",
+  "description": "GitHub Action to create, apply, destroy, and delete Terraform Enterprise/Cloud workspaces with dependency ordering",
+  "version": "1.0.2",
   "author": "",
   "type": "module",
   "private": true,
-  "homepage": "https://github.com/actions/typescript-action",
+  "homepage": "https://github.com/Digital-Anthropic/tfe-ephemeral",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/actions/typescript-action.git"
+    "url": "git+https://github.com/Digital-Anthropic/tfe-ephemeral.git"
   },
   "bugs": {
-    "url": "https://github.com/actions/typescript-action/issues"
+    "url": "https://github.com/Digital-Anthropic/tfe-ephemeral/issues"
   },
   "keywords": [
-    "actions"
+    "actions",
+    "terraform",
+    "terraform-enterprise",
+    "terraform-cloud",
+    "workspace"
   ],
   "exports": {
     ".": "./dist/index.js"
