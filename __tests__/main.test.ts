@@ -465,6 +465,51 @@ workspaces:
       expect(mockSetFailed).not.toHaveBeenCalled()
     })
 
+    it('succeeds when apply runs finish with no changes', async () => {
+      // Idempotent re-apply: every run plans clean and ends as
+      // planned_and_finished instead of applied. The action must succeed.
+      for (const ws of ['net', 'db', 'app']) {
+        mockGetJson.mockResolvedValueOnce({
+          statusCode: 200,
+          result: {
+            data: {
+              id: `ws-${ws}`,
+              type: 'workspaces',
+              attributes: { name: ws }
+            }
+          }
+        })
+        mockPostJson.mockResolvedValueOnce({
+          statusCode: 201,
+          result: {
+            data: {
+              id: `run-${ws}`,
+              type: 'runs',
+              attributes: { status: 'pending' }
+            }
+          }
+        })
+        mockGetJson.mockResolvedValueOnce({
+          statusCode: 200,
+          result: {
+            data: {
+              id: `run-${ws}`,
+              type: 'runs',
+              attributes: { status: 'planned_and_finished' }
+            }
+          }
+        })
+      }
+
+      await run()
+
+      expect(mockPostJson).toHaveBeenCalledTimes(3) // 3 runs created
+      expect(mockSetFailed).not.toHaveBeenCalled()
+      expect(mockInfo).toHaveBeenCalledWith(
+        '🎉 All operations completed successfully!'
+      )
+    })
+
     it('stops apply on first failure', async () => {
       // Mock getWorkspace call for first workspace (network)
       mockGetJson.mockResolvedValueOnce({

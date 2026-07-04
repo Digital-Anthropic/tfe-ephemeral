@@ -317,6 +317,32 @@ describe('TFEClient', () => {
       )
     })
 
+    it('treats planned_and_finished as a successful terminal state', async () => {
+      // Regression test for the v1.0.2 bug: a no-changes plan on an
+      // auto-apply run ends as planned_and_finished and must resolve
+      // immediately instead of polling until the timeout.
+      mockGetJson.mockResolvedValue({
+        statusCode: 200,
+        result: {
+          data: {
+            id: 'run-123',
+            type: 'runs',
+            attributes: {
+              status: 'planned_and_finished'
+            }
+          }
+        }
+      })
+
+      const result = await client.waitForRun('run-123')
+
+      expect(result.data.attributes.status).toBe('planned_and_finished')
+      expect(mockInfo).toHaveBeenCalledWith(
+        '✅ Run completed with no changes to apply: run-123'
+      )
+      expect(mockWarning).not.toHaveBeenCalled()
+    })
+
     it('handles canceled status', async () => {
       mockGetJson.mockResolvedValue({
         statusCode: 200,
