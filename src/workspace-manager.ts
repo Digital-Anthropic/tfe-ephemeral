@@ -269,7 +269,10 @@ export class WorkspaceManager {
       core.info(`Run created: ${run.data.id}`)
 
       // Wait for run to complete
-      await this.client.waitForRun(run.data.id)
+      await this.client.waitForRun(run.data.id, undefined, {
+        organization: this.organization,
+        workspaceName: name
+      })
 
       core.info(`✅ Workspace applied: ${name}`)
 
@@ -352,7 +355,10 @@ export class WorkspaceManager {
       core.info(`Destroy run created: ${run.data.id}`)
 
       // Wait for run to complete
-      await this.client.waitForRun(run.data.id)
+      await this.client.waitForRun(run.data.id, undefined, {
+        organization: this.organization,
+        workspaceName: name
+      })
 
       core.info(`✅ Workspace destroyed: ${name}`)
 

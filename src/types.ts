@@ -181,6 +181,20 @@ export type RunStatus =
   | 'force_canceled'
 
 /**
+ * Options for waiting on a run to reach a terminal state
+ */
+export interface WaitForRunOptions {
+  /** Organization name; used to build the run URL shown in error messages */
+  organization?: string
+  /** Workspace name; used to build the run URL shown in error messages */
+  workspaceName?: string
+  /** Interval between polls in milliseconds (default: 5000) */
+  pollInterval?: number
+  /** Consecutive poll failures tolerated before giving up (default: 5) */
+  maxConsecutivePollFailures?: number
+}
+
+/**
  * Request body for creating a run
  */
 export interface TFERunRequest {

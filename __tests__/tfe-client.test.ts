@@ -295,25 +295,80 @@ describe('TFEClient', () => {
       )
     }, 10000)
 
-    it('handles non-200 status code', async () => {
+    it('handles persistent non-200 status codes after exhausting retries', async () => {
       mockGetJson.mockResolvedValue({
         statusCode: 500,
         result: null
       })
 
-      await expect(client.waitForRun('run-123')).rejects.toThrow(
-        'Failed to get run status: HTTP 500'
-      )
+      await expect(
+        client.waitForRun('run-123', 1800000, { pollInterval: 1 })
+      ).rejects.toThrow('Failed to get run status: HTTP 500')
+
+      // 5 tolerated failures + the final one that gives up
+      expect(mockGetJson).toHaveBeenCalledTimes(6)
+      expect(mockWarning).toHaveBeenCalledTimes(5)
     })
 
-    it('handles no response result', async () => {
+    it('handles persistent missing response data after exhausting retries', async () => {
       mockGetJson.mockResolvedValue({
         statusCode: 200,
         result: null
       })
 
-      await expect(client.waitForRun('run-123')).rejects.toThrow(
-        'No response data from TFE API'
+      await expect(
+        client.waitForRun('run-123', 1800000, { pollInterval: 1 })
+      ).rejects.toThrow('No response data from TFE API')
+    })
+
+    it('recovers from transient poll failures', async () => {
+      mockGetJson
+        .mockRejectedValueOnce(new Error('socket hang up'))
+        .mockResolvedValueOnce({ statusCode: 429, result: null })
+        .mockResolvedValueOnce({
+          statusCode: 200,
+          result: {
+            data: {
+              id: 'run-123',
+              type: 'runs',
+              attributes: { status: 'applied' }
+            }
+          }
+        })
+
+      const result = await client.waitForRun('run-123', 1800000, {
+        pollInterval: 1
+      })
+
+      expect(result.data.attributes.status).toBe('applied')
+      expect(mockGetJson).toHaveBeenCalledTimes(3)
+      expect(mockWarning).toHaveBeenCalledWith(
+        expect.stringContaining('Poll 1/5 for run run-123 failed')
+      )
+      expect(mockWarning).toHaveBeenCalledWith(
+        expect.stringContaining('Poll 2/5 for run run-123 failed')
+      )
+    })
+
+    it('includes the run URL in waiter errors when context is provided', async () => {
+      mockGetJson.mockResolvedValue({
+        statusCode: 200,
+        result: {
+          data: {
+            id: 'run-123',
+            type: 'runs',
+            attributes: { status: 'errored' }
+          }
+        }
+      })
+
+      await expect(
+        client.waitForRun('run-123', 1800000, {
+          organization: 'test-org',
+          workspaceName: 'network'
+        })
+      ).rejects.toThrow(
+        'Run failed with status: errored (https://app.terraform.io/app/test-org/workspaces/network/runs/run-123)'
       )
     })
 
@@ -412,8 +467,10 @@ describe('TFEClient', () => {
     it('handles non-Error exceptions in polling', async () => {
       mockGetJson.mockRejectedValue('polling error')
 
-      await expect(client.waitForRun('run-123')).rejects.toThrow(
-        'Failed to poll run status'
+      await expect(
+        client.waitForRun('run-123', 1800000, { pollInterval: 1 })
+      ).rejects.toThrow(
+        'Failed to poll run status 6 consecutive times: polling error'
       )
     })
   })

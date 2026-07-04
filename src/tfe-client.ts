@@ -16,6 +16,7 @@ import {
   TFERunResponse,
   RunStatus,
   VCSConfig,
+  WaitForRunOptions,
   WorkspaceVariables
 } from './types.js'
 
@@ -378,19 +379,37 @@ export class TFEClient {
   }
 
   /**
-   * Polls a run until it reaches a terminal state
+   * Polls a run until it reaches a terminal state.
+   *
+   * Transient poll failures (network blips, 5xx/429 responses) are tolerated
+   * with exponential backoff: the run keeps progressing server-side, so a
+   * single bad poll must not fail the whole operation. Only repeated
+   * consecutive failures give up.
    *
    * @param runId - The run ID
    * @param timeout - Max time to wait in milliseconds (default: 30 minutes)
+   * @param options - Poll tuning and run URL context for error messages
    * @returns The final run data
    */
   async waitForRun(
     runId: string,
-    timeout: number = 1800000 // 30 minutes
+    timeout: number = 1800000, // 30 minutes
+    options: WaitForRunOptions = {}
   ): Promise<TFERunResponse> {
     const url = `https://${this.hostname}/api/v2/runs/${runId}`
     const startTime = Date.now()
-    const pollInterval = 5000 // 5 seconds
+    const pollInterval = options.pollInterval ?? 5000 // 5 seconds
+    const maxConsecutivePollFailures = options.maxConsecutivePollFailures ?? 5
+
+    // Human-facing run URL, included in errors so failures can be inspected
+    // in the TFE UI without hunting from the workspace name alone
+    const runUrl =
+      options.organization && options.workspaceName
+        ? `https://${this.hostname}/app/${options.organization}/workspaces/${options.workspaceName}/runs/${runId}`
+        : undefined
+    const urlSuffix = runUrl ? ` (${runUrl})` : ''
+
+    let consecutivePollFailures = 0
 
     core.info(`Waiting for run ${runId} to complete...`)
 
@@ -398,10 +417,11 @@ export class TFEClient {
       // Check timeout
       if (Date.now() - startTime > timeout) {
         throw new Error(
-          `Run ${runId} timed out after ${timeout / 1000} seconds`
+          `Run ${runId} timed out after ${timeout / 1000} seconds${urlSuffix}`
         )
       }
 
+      let run: TFERunResponse
       try {
         const response = await this.client.getJson<TFERunResponse>(url)
 
@@ -415,43 +435,55 @@ export class TFEClient {
           throw new Error('No response data from TFE API')
         }
 
-        const run = response.result
-        const status = run.data.attributes.status
-
-        core.info(`Run status: ${status}`)
-
-        // Terminal states
-        const terminalStates: RunStatus[] = [
-          'applied',
-          'planned_and_finished',
-          'errored',
-          'canceled',
-          'force_canceled',
-          'discarded'
-        ]
-
-        if (terminalStates.includes(status)) {
-          if (status === 'applied') {
-            core.info(`✅ Run completed successfully: ${runId}`)
-          } else if (status === 'planned_and_finished') {
-            core.info(`✅ Run completed with no changes to apply: ${runId}`)
-          } else if (status === 'errored') {
-            throw new Error(`Run failed with status: ${status}`)
-          } else {
-            core.warning(`Run ended with status: ${status}`)
-          }
-          return run
-        }
-
-        // Wait before next poll
-        await new Promise((resolve) => setTimeout(resolve, pollInterval))
+        run = response.result
+        consecutivePollFailures = 0
       } catch (error) {
-        if (error instanceof Error) {
-          throw error
+        consecutivePollFailures++
+        const message = error instanceof Error ? error.message : String(error)
+
+        if (consecutivePollFailures > maxConsecutivePollFailures) {
+          throw new Error(
+            `Failed to poll run status ${consecutivePollFailures} consecutive times: ${message}${urlSuffix}`
+          )
         }
-        const message = String(error)
-        throw new Error(`Failed to poll run status: ${message}`)
+
+        const backoff = pollInterval * 2 ** (consecutivePollFailures - 1)
+        core.warning(
+          `Poll ${consecutivePollFailures}/${maxConsecutivePollFailures} for run ${runId} failed (${message}); retrying in ${backoff / 1000}s`
+        )
+        await new Promise((resolve) => setTimeout(resolve, backoff))
+        continue
       }
+
+      const status = run.data.attributes.status
+
+      core.info(`Run status: ${status}`)
+
+      // Terminal states
+      const terminalStates: RunStatus[] = [
+        'applied',
+        'planned_and_finished',
+        'errored',
+        'canceled',
+        'force_canceled',
+        'discarded'
+      ]
+
+      if (terminalStates.includes(status)) {
+        if (status === 'applied') {
+          core.info(`✅ Run completed successfully: ${runId}`)
+        } else if (status === 'planned_and_finished') {
+          core.info(`✅ Run completed with no changes to apply: ${runId}`)
+        } else if (status === 'errored') {
+          throw new Error(`Run failed with status: ${status}${urlSuffix}`)
+        } else {
+          core.warning(`Run ended with status: ${status}`)
+        }
+        return run
+      }
+
+      // Wait before next poll
+      await new Promise((resolve) => setTimeout(resolve, pollInterval))
     }
   }
 
