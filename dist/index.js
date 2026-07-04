@@ -31638,6 +31638,9 @@ async function run() {
     try {
         // Get required inputs
         const token = coreExports.getInput('tfe-token', { required: true });
+        // Mask the token in logs even when it does not come directly from
+        // ${{ secrets.* }} (e.g. fetched from a vault in a previous step).
+        coreExports.setSecret(token);
         const organization = coreExports.getInput('organization-name', { required: true });
         const configYaml = coreExports.getInput('config', { required: true });
         const hostname = coreExports.getInput('tfe-hostname') || 'app.terraform.io';
@@ -31702,9 +31705,13 @@ async function run() {
         }
     }
     catch (error) {
-        // Fail the workflow run if an error occurs
+        // Fail the workflow run if an error occurs. Non-Error throws (strings,
+        // objects) must also fail the run instead of letting it exit successfully.
         if (error instanceof Error) {
             coreExports.setFailed(`Action failed: ${error.message}`);
+        }
+        else {
+            coreExports.setFailed(`Action failed: ${String(error)}`);
         }
     }
 }
