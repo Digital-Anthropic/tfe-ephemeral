@@ -47,18 +47,45 @@ jobs:
   test-action:
     name: GitHub Actions Test
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: Checkout
         id: checkout
         uses: actions/checkout@v5
 
-      - name: Test Local Action
+      # Smoke test: run the bundled action end-to-end (input parsing, YAML
+      # config validation, dependency resolution) with a fake token against a
+      # guaranteed-unresolvable hostname (.invalid TLD, RFC 2606). No real TFE
+      # API is reachable, so the action must fail in a controlled way with
+      # "1 workspace(s) failed" instead of succeeding or hanging.
+      - name: Smoke Test (controlled failure)
         id: test-action
+        continue-on-error: true
         uses: ./
         with:
-          milliseconds: 2000
+          tfe-token: fake-token-for-smoke-test
+          organization-name: smoke-test-org
+          tfe-hostname: tfe.invalid
+          config: |
+            action: create
+            workspaces:
+              smoke-test:
+                variables:
+                  environment: smoke
 
-      - name: Print Output
-        id: output
-        run: echo "${{ steps.test-action.outputs.time }}"
+      - name: Assert Controlled Failure
+        id: assert
+        env:
+          OUTCOME: ${{ steps.test-action.outcome }}
+          WORKSPACE_ID: ${{ steps.test-action.outputs.workspace-id }}
+        run: |
+          if [ "$OUTCOME" != "failure" ]; then
+            echo "Expected the action to fail against an unreachable TFE host, got outcome: $OUTCOME"
+            exit 1
+          fi
+          if [ -n "$WORKSPACE_ID" ]; then
+            echo "Expected no workspace-id output on failure, got: $WORKSPACE_ID"
+            exit 1
+          fi
+          echo "Action failed in a controlled way as expected."
