@@ -31188,7 +31188,7 @@ class TFEClient {
      *
      * TFC exposes plan/apply output through a short-lived pre-signed `log-read-url`.
      * The log is JSON Lines with a plain-text preamble, so lines are parsed
-     * individually and unparseable ones skipped.
+     * individually and unparsable ones skipped.
      *
      * Diagnostics are best-effort: any failure here is reported but never thrown,
      * so it cannot mask the underlying run failure.

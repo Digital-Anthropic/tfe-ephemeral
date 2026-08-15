@@ -199,7 +199,7 @@ must be shipped by rebuilding and committing `dist/` (`npm run bundle`); the
 `Check dist/` workflow fails PRs where `dist/` does not match the source.
 
 Releases are cut with [`script/release`](./script/release), which creates the
-semver tag and keeps the floating major tag (e.g. `v1`) in sync.
+SemVer tag and keeps the floating major tag (e.g. `v1`) in sync.
 
 ## License
 
