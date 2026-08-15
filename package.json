@@ -1,7 +1,7 @@
 {
   "name": "tfe-ephemeral",
   "description": "GitHub Action to create, apply, destroy, and delete Terraform Enterprise/Cloud workspaces with dependency ordering",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "author": "",
   "type": "module",
   "private": true,
