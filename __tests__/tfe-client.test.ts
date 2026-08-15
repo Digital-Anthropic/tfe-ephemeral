@@ -20,10 +20,12 @@ jest.unstable_mockModule('@actions/core', () => ({
 const mockPostJson = jest.fn()
 const mockGetJson = jest.fn()
 const mockDel = jest.fn()
+const mockGet = jest.fn()
 const mockHttpClient = jest.fn().mockImplementation(() => ({
   postJson: mockPostJson,
   getJson: mockGetJson,
-  del: mockDel
+  del: mockDel,
+  get: mockGet
 }))
 
 jest.unstable_mockModule('@actions/http-client', () => ({
@@ -370,6 +372,125 @@ describe('TFEClient', () => {
       ).rejects.toThrow(
         'Run failed with status: errored (https://app.terraform.io/app/test-org/workspaces/network/runs/run-123)'
       )
+    })
+
+    // A caller that tears the workspace down on failure deletes the run and its
+    // logs, so the diagnostic must be surfaced while the run still exists.
+    describe('failure diagnostics', () => {
+      const erroredRun = (
+        relationships: Record<string, unknown> | undefined
+      ) => ({
+        statusCode: 200,
+        result: {
+          data: {
+            id: 'run-123',
+            type: 'runs',
+            attributes: { status: 'errored' },
+            relationships
+          }
+        }
+      })
+
+      const logUrlResponse = {
+        statusCode: 200,
+        result: {
+          data: {
+            attributes: { 'log-read-url': 'https://logs.example/plan-1' }
+          }
+        }
+      }
+
+      it('surfaces structured Terraform diagnostics from the plan log', async () => {
+        mockGetJson
+          .mockResolvedValueOnce(
+            erroredRun({ plan: { data: { id: 'plan-1' } } })
+          )
+          .mockResolvedValueOnce(logUrlResponse)
+
+        mockGet.mockResolvedValue({
+          readBody: async () =>
+            [
+              // TFC prefixes the JSONL stream with plain text; it must be skipped
+              // rather than aborting the parse.
+              'Terraform v1.15.8',
+              'Initializing plugins and modules...',
+              JSON.stringify({
+                '@level': 'info',
+                '@message': 'not an error'
+              }),
+              JSON.stringify({
+                '@level': 'error',
+                '@message': 'Error: Invalid index',
+                diagnostic: {
+                  summary: 'Invalid index',
+                  detail: 'The given key does not identify an element.',
+                  address: 'aws_iam_policy.transcript_upload',
+                  range: { filename: 'transcripts.tf', start: { line: 196 } }
+                }
+              })
+            ].join('\n')
+        })
+
+        await expect(client.waitForRun('run-123', 1800000)).rejects.toThrow(
+          'Run failed with status: errored'
+        )
+
+        expect(mockError).toHaveBeenCalledWith(
+          expect.stringContaining('Invalid index')
+        )
+        expect(mockError).toHaveBeenCalledWith(
+          expect.stringContaining('transcripts.tf:196')
+        )
+        expect(mockError).toHaveBeenCalledWith(
+          expect.stringContaining('aws_iam_policy.transcript_upload')
+        )
+      })
+
+      // init/provider failures never reach the structured stream
+      it('falls back to the log tail when there are no structured errors', async () => {
+        mockGetJson
+          .mockResolvedValueOnce(
+            erroredRun({ plan: { data: { id: 'plan-1' } } })
+          )
+          .mockResolvedValueOnce(logUrlResponse)
+
+        mockGet.mockResolvedValue({
+          readBody: async () =>
+            'Initializing the backend...\nError: Failed to install provider\n'
+        })
+
+        await expect(client.waitForRun('run-123', 1800000)).rejects.toThrow(
+          'Run failed with status: errored'
+        )
+
+        expect(mockError).toHaveBeenCalledWith(
+          expect.stringContaining('Failed to install provider')
+        )
+      })
+
+      it('still reports the run failure when the log cannot be read', async () => {
+        mockGetJson
+          .mockResolvedValueOnce(
+            erroredRun({ plan: { data: { id: 'plan-1' } } })
+          )
+          .mockRejectedValueOnce(new Error('boom'))
+
+        await expect(client.waitForRun('run-123', 1800000)).rejects.toThrow(
+          'Run failed with status: errored'
+        )
+
+        expect(mockWarning).toHaveBeenCalledWith(
+          expect.stringContaining('Could not read plan log')
+        )
+      })
+
+      it('does not throw when the run has no relationships', async () => {
+        mockGetJson.mockResolvedValueOnce(erroredRun(undefined))
+
+        await expect(client.waitForRun('run-123', 1800000)).rejects.toThrow(
+          'Run failed with status: errored'
+        )
+      })
     })
 
     it('treats planned_and_finished as a successful terminal state', async () => {

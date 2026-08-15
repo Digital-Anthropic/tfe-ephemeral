@@ -31183,6 +31183,75 @@ class TFEClient {
      * @param options - Poll tuning and run URL context for error messages
      * @returns The final run data
      */
+    /**
+     * Fetches and prints the Terraform diagnostics for a failed run.
+     *
+     * TFC exposes plan/apply output through a short-lived pre-signed `log-read-url`.
+     * The log is JSON Lines with a plain-text preamble, so lines are parsed
+     * individually and unparseable ones skipped.
+     *
+     * Diagnostics are best-effort: any failure here is reported but never thrown,
+     * so it cannot mask the underlying run failure.
+     *
+     * @param run - The failed run
+     */
+    async logRunDiagnostics(run) {
+        // Pre-signed URLs reject requests carrying an unexpected Authorization
+        // header, so fetch the log body with a clean client.
+        const rawClient = new libExports.HttpClient('tfe-workspace-action');
+        // `relationships` is absent on some API shapes; a diagnostics helper must
+        // never throw, or it replaces the real run failure with a TypeError.
+        const rels = run.data?.relationships;
+        const targets = [
+            { kind: 'plan', id: rels?.plan?.data?.id },
+            { kind: 'apply', id: rels?.apply?.data?.id }
+        ];
+        for (const { kind, id } of targets) {
+            if (!id)
+                continue;
+            try {
+                const meta = await this.client.getJson(`https://${this.hostname}/api/v2/${kind}s/${id}`);
+                const logUrl = meta.result?.data?.attributes?.['log-read-url'];
+                if (!logUrl)
+                    continue;
+                const body = await (await rawClient.get(logUrl)).readBody();
+                if (!body.trim())
+                    continue;
+                const diagnostics = [];
+                for (const line of body.split('\n')) {
+                    if (!line.startsWith('{'))
+                        continue;
+                    try {
+                        const entry = JSON.parse(line);
+                        if (entry['@level'] !== 'error')
+                            continue;
+                        const d = entry.diagnostic;
+                        const where = d?.range?.filename
+                            ? ` (${d.range.filename}:${d.range.start?.line ?? '?'})`
+                            : '';
+                        const addr = d?.address ? ` [${d.address}]` : '';
+                        diagnostics.push(`${d?.summary ?? entry['@message'] ?? 'error'}${addr}${where}` +
+                            (d?.detail ? `\n    ${d.detail}` : ''));
+                    }
+                    catch {
+                        // Not a JSON log line — nothing to extract from it.
+                    }
+                }
+                if (diagnostics.length > 0) {
+                    coreExports.error(`Terraform ${kind} errors:\n${diagnostics.map((d) => `  - ${d}`).join('\n')}`);
+                }
+                else {
+                    // Init/provider failures never reach the structured stream.
+                    const tail = body.trimEnd().split('\n').slice(-30).join('\n');
+                    coreExports.error(`Terraform ${kind} output (last 30 lines):\n${tail}`);
+                }
+            }
+            catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                coreExports.warning(`Could not read ${kind} log for run failure: ${message}`);
+            }
+        }
+    }
     async waitForRun(runId, timeout = 1800000, // 30 minutes
     options = {}) {
         const url = `https://${this.hostname}/api/v2/runs/${runId}`;
@@ -31244,6 +31313,10 @@ class TFEClient {
                     coreExports.info(`✅ Run completed with no changes to apply: ${runId}`);
                 }
                 else if (status === 'errored') {
+                    // The status alone says nothing about WHY. Callers routinely tear the
+                    // workspace down on failure, which deletes the run and its logs, so the
+                    // diagnostic has to be surfaced here or it is lost for good.
+                    await this.logRunDiagnostics(run);
                     throw new Error(`Run failed with status: ${status}${urlSuffix}`);
                 }
                 else {
