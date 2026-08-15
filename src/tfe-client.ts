@@ -26,7 +26,6 @@ import {
 export class TFEClient {
   private client: httpm.HttpClient
   private hostname: string
-  private token: string
 
   /**
    * Creates a new TFE API client
@@ -36,7 +35,6 @@ export class TFEClient {
    */
   constructor(hostname: string, token: string) {
     this.hostname = hostname
-    this.token = token
 
     // Create HTTP client with proper headers for TFE API
     this.client = new httpm.HttpClient('tfe-workspace-action', [], {
