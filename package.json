@@ -70,6 +70,6 @@
     "rollup": "^4.52.5",
     "ts-jest": "^29.4.5",
     "ts-jest-resolver": "^2.0.1",
-    "typescript": "^5.9.3"
+    "typescript": "^7.0.2"
   }
 }
